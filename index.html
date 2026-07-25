@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تطبيق ساعة Oraimo - مستكشف القنوات</title>
+    <title>Oraimo Watch Face & Data Tool</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: system-ui, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
@@ -12,23 +12,22 @@
         .btn { padding: 12px 20px; font-size: 15px; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px; width: 90%; }
         .btn-blue { background: #3b82f6; }
         .btn-green { background: #10b981; }
+        .btn-orange { background: #f97316; }
         #status { margin-top: 15px; font-size: 14px; color: #38bdf8; font-weight: 500; }
         #reader { width: 100%; max-width: 350px; margin: 15px auto; border-radius: 12px; overflow: hidden; display: none; }
         #qr-result { margin-top: 10px; background: #0f172a; padding: 10px; border-radius: 8px; font-family: monospace; word-break: break-all; font-size: 13px; color: #a5f3fc; }
-        .service-card { text-align: left; background: #1e293b; padding: 15px; border-radius: 10px; margin-top: 15px; font-family: monospace; border: 1px solid #334155; max-width: 450px; margin-left: auto; margin-right: auto; }
-        .char-item { margin-left: 10px; color: #a5f3fc; font-size: 11px; margin-top: 5px; word-break: break-all; }
-        .prop-badge { background: #0284c7; color: white; padding: 2px 5px; border-radius: 4px; font-size: 9px; margin-left: 2px; }
+        .console-log { text-align: left; background: #020617; padding: 15px; border-radius: 10px; margin-top: 15px; font-family: monospace; border: 1px solid #1e293b; color: #4ade80; font-size: 12px; max-height: 250px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
-    <h2>مستكشف ساعة Oraimo ⌚</h2>
+    <h2>Oraimo Watch Face Manager ⌚</h2>
 
     <div class="card">
         <label><b>موديل الساعة أو بادئة الاسم:</b></label><br><br>
         <input type="text" id="devicePrefix" value="oraimo" placeholder="مثال: oraimo">
         
-        <button class="btn btn-blue" onclick="scanBLE()">البحث والكشف الشامل عن القنوات 🔵</button>
+        <button class="btn btn-blue" onclick="connectAndTarget()">الاتصال وفتح قناة الواجهات (OTA) 🔵</button>
         <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
     </div>
 
@@ -36,10 +35,18 @@
     <div id="qr-result">نتيجة مسح الـ QR ستظهر هنا...</div>
 
     <div id="status">الحالة: جاهز للاتصال</div>
-    <div id="results"></div>
+    <div id="log" class="console-log">سجل الاتصال والقنوات المفتوحة سيظهر هنا...</div>
 
     <script>
         let html5QrcodeScanner = null;
+        let bluetoothDevice = null;
+        let gattServer = null;
+
+        function log(msg) {
+            const logDiv = document.getElementById('log');
+            logDiv.innerHTML += `> ${msg}<br>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
 
         function toggleQRScanner() {
             const readerDiv = document.getElementById('reader');
@@ -67,79 +74,65 @@
             }
         }
 
-        async function scanBLE() {
+        async function connectAndTarget() {
             const statusDiv = document.getElementById('status');
-            const resultsDiv = document.getElementById('results');
             const userPrefix = document.getElementById('devicePrefix').value.trim();
-            resultsDiv.innerHTML = '';
+            document.getElementById('log').innerHTML = '';
 
             try {
-                statusDiv.innerText = `جاري البحث عن أجهزة تحتوي على: (${userPrefix})...`;
+                statusDiv.innerText = `جاري طلب الاتصال بالساعة...`;
+                log(`البحث عن بادئة: ${userPrefix}`);
 
-                // قائمة موسعة جداً بأشهر Custom UUIDs المستخدمة في ساعات Oraimo وسلاسل Realtek / JL / Nordic
-                const customServices = [
-                    '00001800-0000-1000-8000-00805f9b34fb', // Generic Access
-                    '00001801-0000-1000-8000-00805f9b34fb', // Generic Attribute
+                // الـ UUIDs المستهدفة لقنوات التواصل ونقل البيانات المخصصة
+                const targetServices = [
+                    '0000ffe0-0000-1000-8000-00805f9b34fb', // FFE0 Custom Data Stream
+                    '0000fee0-0000-1000-8000-00805f9b34fb', // FEE0 Health/WatchFace Data
                     '0000180a-0000-1000-8000-00805f9b34fb', // Device Info
-                    '0000180f-0000-1000-8000-00805f9b34fb', // Battery
-                    '0000ffe0-0000-1000-8000-00805f9b34fb', // Common Custom 1
-                    '0000ffe1-0000-1000-8000-00805f9b34fb',
-                    '0000fee0-0000-1000-8000-00805f9b34fb', // Custom 2
-                    '0000fee7-0000-1000-8000-00805f9b34fb',
-                    '0000fc00-0000-1000-8000-00805f9b34fb',
-                    '00001910-0000-1000-8000-00805f9b34fb', // Realtek OTA/Data
-                    '00000001-0000-1000-8000-00805f9b34fb',
-                    '6e400001-b5a3-f393-e0a9-e50e24dcca9e'  // Nordic UART
+                    '00001800-0000-1000-8000-00805f9b34fb'  // Generic Access
                 ];
 
-                const options = {
+                bluetoothDevice = await navigator.bluetooth.requestDevice({
                     filters: [
                         { namePrefix: userPrefix },
                         { namePrefix: 'oraimo' }
                     ],
-                    optionalServices: customServices
-                };
+                    optionalServices: targetServices
+                });
 
-                if (!userPrefix) {
-                    delete options.filters;
-                    options.acceptAllDevices = true;
-                }
+                log(`تم اختيار الجهاز: ${bluetoothDevice.name}`);
+                statusDiv.innerText = `جاري الاتصال بالساعة...`;
 
-                const device = await navigator.bluetooth.requestDevice(options);
+                gattServer = await bluetoothDevice.gatt.connect();
+                log(`تم الاتصال بـ GATT Server بنجاح! 🟢`);
+                statusDiv.innerText = `متصل بنجاح 🟢`;
 
-                statusDiv.innerText = `جاري الاتصال بـ: ${device.name || 'الساعة'}...`;
-                const server = await device.gatt.connect();
-                statusDiv.innerText = `تم الاتصال! جاري استخراج قنوات الاتصال...`;
-
-                const services = await server.getPrimaryServices();
-                let output = '<h3>القنوات والخدمات المكتشفة:</h3>';
-
-                for (const service of services) {
-                    output += `<div class="service-card"><b>🔹 Service:</b> ${service.uuid}<br>`;
+                // الفحص المباشر الموجه لكل خدمة دون استخدام getPrimaryServices العام
+                for (const serviceUuid of targetServices) {
                     try {
-                        const characteristics = await service.getCharacteristics();
-                        for (const char of characteristics) {
-                            let props = [];
-                            if (char.properties.read) props.push('READ');
-                            if (char.properties.write) props.push('WRITE');
-                            if (char.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
-                            if (char.properties.notify) props.push('NOTIFY');
+                        log(`محاولة فتح الخدمة: ${serviceUuid}...`);
+                        const service = await gattServer.getPrimaryService(serviceUuid);
+                        log(`✅ تم العثور على الخدمة: ${serviceUuid}`);
 
-                            const propsText = props.map(p => `<span class="prop-badge">${p}</span>`).join(' ');
-                            output += `<div class="char-item">└─ Char: ${char.uuid} ${propsText}</div>`;
-                        }
-                    } catch (e) {
-                        output += `<div class="char-item" style="color:#f87171;">└─ يتعذر القراءة المباشرة للميزة</div>`;
+                        const characteristics = await service.getCharacteristics();
+                        characteristics.forEach(c => {
+                            let props = [];
+                            if (c.properties.read) props.push('READ');
+                            if (c.properties.write) props.push('WRITE');
+                            if (c.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
+                            if (c.properties.notify) props.push('NOTIFY');
+                            log(`  └─ القناة الفرعية (Char): ${c.uuid} [${props.join(', ')}]`);
+                        });
+                    } catch (sErr) {
+                        log(`  ❌ الخدمة غير متاحة في هذا الموديل.`);
                     }
-                    output += `</div>`;
                 }
 
-                resultsDiv.innerHTML = output;
-                statusDiv.innerText = `تم استخراج الخدمات بنجاح ✅`;
+                statusDiv.innerText = `اكتمل الفحص المستهدف ✅`;
 
             } catch (e) {
                 console.error(e);
-                statusDiv.innerText = `خطأ: ${e.message}`;
+                log(`خطأ: ${e.message}`);
+                statusDiv.innerText = `خطأ في الاتصال: ${e.message}`;
             }
         }
     </script>
