@@ -3,59 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>مستكشف البلوتوث - Web Bluetooth</title>
+    <title>تطبيق الساعة + قارئ QR</title>
+    <!-- استدعاء مكتبة QR Code Scanner -->
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: system-ui, sans-serif; padding: 20px; background: #f4f4f9; text-align: center; }
-        button { padding: 12px 24px; font-size: 16px; border: none; background: #007bff; color: white; border-radius: 8px; cursor: pointer; }
-        button:hover { background: #0056b3; }
-        #status { margin-top: 20px; font-weight: bold; }
-        #services { text-align: left; background: #fff; padding: 15px; border-radius: 8px; margin-top: 15px; max-height: 300px; overflow-y: auto; font-family: monospace; }
+        body { font-family: system-ui, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
+        .btn { padding: 12px 24px; font-size: 15px; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px; }
+        .btn-blue { background: #3b82f6; }
+        .btn-green { background: #10b981; }
+        #status { margin-top: 15px; font-size: 14px; color: #38bdf8; }
+        #reader { width: 100%; max-width: 350px; margin: 15px auto; border-radius: 12px; overflow: hidden; display: none; }
+        #qr-result { margin-top: 10px; background: #1e293b; padding: 10px; border-radius: 8px; font-family: monospace; word-break: break-all; }
     </style>
 </head>
 <body>
 
-    <h2>مستكشف البلوتوث للساعة الذكية ⌚</h2>
-    <p>اضغط على الزر للبحث عن الساعات المتاحة والاتصال بها</p>
+    <h2>تطبيق الساعة الذكية ⌚</h2>
     
-    <button onclick="scanAndConnect()">البحث عن الساعة والاتصال</button>
+    <!-- أزرار التحكم -->
+    <button class="btn btn-blue" onclick="scanBLE()">البحث عن الساعة (BLE)</button>
+    <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
 
-    <div id="status">الحالة: غير متصل</div>
-    <div id="services"></div>
+    <!-- منطقة الكاميرا لقراءة الـ QR -->
+    <div id="reader"></div>
+    <div id="qr-result">نتيجة الـ QR ستظهر هنا...</div>
+
+    <div id="status">الحالة: جاهز</div>
 
     <script>
-        async function scanAndConnect() {
+        let html5QrcodeScanner = null;
+
+        // 1. تشغيل / إيقاف قارئ الـ QR Code
+        function toggleQRScanner() {
+            const readerDiv = document.getElementById('reader');
+            const resultDiv = document.getElementById('qr-result');
+
+            if (readerDiv.style.display === 'block') {
+                // إيقاف الكاميرا
+                if (html5QrcodeScanner) {
+                    html5QrcodeScanner.stop().then(() => {
+                        readerDiv.style.display = 'none';
+                    });
+                }
+            } else {
+                // فتح الكاميرا والبدء بالمسح
+                readerDiv.style.display = 'block';
+                html5QrcodeScanner = new Html5Qrcode("reader");
+
+                html5QrcodeScanner.start(
+                    { facingMode: "environment" }, // استخدام الكاميرا الخلفية
+                    { fps: 10, qrbox: { width: 250, height: 250 } },
+                    (decodedText, decodedResult) => {
+                        // عند قراءة الـ QR بنجاح
+                        resultDiv.innerHTML = `<b>تم القراءة:</b><br>${decodedText}`;
+                        // إيقاف الكاميرا تلقائياً بعد القراءة
+                        html5QrcodeScanner.stop().then(() => {
+                            readerDiv.style.display = 'none';
+                        });
+                    },
+                    (errorMessage) => {
+                        // جاري المسح...
+                    }
+                ).catch(err => {
+                    resultDiv.innerText = "خطأ في فتح الكاميرا: " + err;
+                });
+            }
+        }
+
+        // 2. كود البلوتوث الخاص بنا
+        async function scanBLE() {
             const statusDiv = document.getElementById('status');
-            const servicesDiv = document.getElementById('services');
-            servicesDiv.innerHTML = '';
-
             try {
-                statusDiv.innerText = 'جاري البحث عن أجهزة البلوتوث...';
-
-                // 1. طلب البحث عن أجهزة BLE (تسمح بالوصول لجميع الأجهزة)
+                statusDiv.innerText = 'جاري البحث عن الساعة...';
                 const device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true,
-                    optionalServices: [] // يمكن إضافة UUIDs مخصصة هنا لاحقاً
+                    acceptAllDevices: true
                 });
-
-                statusDiv.innerText = `جاري الاتصال بـ: ${device.name || 'جهاز بدون اسم'}...`;
-
-                // 2. الاتصال بالسيرفر الخاص بالجهاز (GATT Server)
-                const server = await device.gatt.connect();
-                statusDiv.innerText = `تم الاتصال بنجاح بـ: ${device.name || 'الجهاز'}`;
-
-                // 3. استكشاف الخدمات (Services) المتاحة في الساعة
-                statusDiv.innerText += ' | جاري قراءة الخدمات...';
-                const services = await server.getPrimaryServices();
-
-                let output = '<b>الخدمات المكتشفة (Services UUIDs):</b><br>';
-                services.forEach(service => {
-                    output += `• ${service.uuid}<br>`;
-                });
-                servicesDiv.innerHTML = output;
-
-            } catch (error) {
-                console.error(error);
-                statusDiv.innerText = `خطأ: ${error.message}`;
+                statusDiv.innerText = `تم اختيار: ${device.name || 'جهاز بدون اسم'}`;
+                await device.gatt.connect();
+                statusDiv.innerText = `متصل بـ: ${device.name || 'الساعة'}`;
+            } catch (e) {
+                statusDiv.innerText = `خطأ BLE: ${e.message}`;
             }
         }
     </script>
