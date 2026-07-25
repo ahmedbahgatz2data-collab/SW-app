@@ -3,32 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تطبيق الساعة + قارئ QR</title>
+    <title>تطبيق الساعة الذكية - Oraimo</title>
     <!-- استدعاء مكتبة QR Code Scanner -->
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: system-ui, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
-        .btn { padding: 12px 24px; font-size: 15px; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; max-width: 400px; margin-left: auto; margin-right: auto; }
+        input { width: 80%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: white; text-align: center; font-size: 16px; }
+        .btn { padding: 12px 20px; font-size: 15px; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px; width: 90%; }
         .btn-blue { background: #3b82f6; }
+        .btn-blue:hover { background: #2563eb; }
         .btn-green { background: #10b981; }
-        #status { margin-top: 15px; font-size: 14px; color: #38bdf8; }
+        .btn-green:hover { background: #059669; }
+        #status { margin-top: 15px; font-size: 14px; color: #38bdf8; font-weight: 500; }
         #reader { width: 100%; max-width: 350px; margin: 15px auto; border-radius: 12px; overflow: hidden; display: none; }
-        #qr-result { margin-top: 10px; background: #1e293b; padding: 10px; border-radius: 8px; font-family: monospace; word-break: break-all; }
+        #qr-result { margin-top: 10px; background: #0f172a; padding: 10px; border-radius: 8px; font-family: monospace; word-break: break-all; font-size: 13px; color: #a5f3fc; }
     </style>
 </head>
 <body>
 
-    <h2>تطبيق الساعة الذكية ⌚</h2>
-    
-    <!-- أزرار التحكم -->
-    <button class="btn btn-blue" onclick="scanBLE()">البحث عن الساعة (BLE)</button>
-    <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
+    <h2>مستكشف ساعة Oraimo ⌚</h2>
+
+    <div class="card">
+        <label><b>موديل الساعة أو بادئة الاسم:</b></label><br><br>
+        <input type="text" id="devicePrefix" value="OSW-830" placeholder="مثال: OSW-830">
+        
+        <button class="btn btn-blue" onclick="scanBLE()">البحث والاتصال بالساعة 🔵</button>
+        <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
+    </div>
 
     <!-- منطقة الكاميرا لقراءة الـ QR -->
     <div id="reader"></div>
-    <div id="qr-result">نتيجة الـ QR ستظهر هنا...</div>
+    <div id="qr-result">نتيجة مسح الـ QR ستظهر هنا...</div>
 
-    <div id="status">الحالة: جاهز</div>
+    <div id="status">الحالة: جاهز للاتصال</div>
 
     <script>
         let html5QrcodeScanner = null;
@@ -39,50 +47,75 @@
             const resultDiv = document.getElementById('qr-result');
 
             if (readerDiv.style.display === 'block') {
-                // إيقاف الكاميرا
                 if (html5QrcodeScanner) {
                     html5QrcodeScanner.stop().then(() => {
                         readerDiv.style.display = 'none';
                     });
                 }
             } else {
-                // فتح الكاميرا والبدء بالمسح
                 readerDiv.style.display = 'block';
                 html5QrcodeScanner = new Html5Qrcode("reader");
 
                 html5QrcodeScanner.start(
-                    { facingMode: "environment" }, // استخدام الكاميرا الخلفية
+                    { facingMode: "environment" },
                     { fps: 10, qrbox: { width: 250, height: 250 } },
                     (decodedText, decodedResult) => {
-                        // عند قراءة الـ QR بنجاح
                         resultDiv.innerHTML = `<b>تم القراءة:</b><br>${decodedText}`;
-                        // إيقاف الكاميرا تلقائياً بعد القراءة
+                        
+                        // محاولة استخراج اسم الموديل تلقائياً من رابط الـ QR (مثل OSW-830)
+                        const match = decodedText.match(/(OSW-[A-Za-z0-9]+|oraimo)/i);
+                        if (match) {
+                            document.getElementById('devicePrefix').value = match[0];
+                        }
+
                         html5QrcodeScanner.stop().then(() => {
                             readerDiv.style.display = 'none';
                         });
                     },
-                    (errorMessage) => {
-                        // جاري المسح...
-                    }
+                    (errorMessage) => {}
                 ).catch(err => {
                     resultDiv.innerText = "خطأ في فتح الكاميرا: " + err;
                 });
             }
         }
 
-        // 2. كود البلوتوث الخاص بنا
+        // 2. كود البحث والاتصال بالبلوتوث مع فلترة الموديل المدخل
         async function scanBLE() {
             const statusDiv = document.getElementById('status');
+            const userPrefix = document.getElementById('devicePrefix').value.trim();
+
             try {
-                statusDiv.innerText = 'جاري البحث عن الساعة...';
-                const device = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true
-                });
-                statusDiv.innerText = `تم اختيار: ${device.name || 'جهاز بدون اسم'}`;
-                await device.gatt.connect();
-                statusDiv.innerText = `متصل بـ: ${device.name || 'الساعة'}`;
+                statusDiv.innerText = `جاري البحث عن أجهزة تحتوي على: (${userPrefix})...`;
+
+                // إعداد شروط الفلترة بناءً على ما كتبه المستخدم أو ظهر من الـ QR
+                const options = {
+                    filters: [
+                        { namePrefix: userPrefix },
+                        { namePrefix: 'oraimo' }
+                    ],
+                    optionalServices: [
+                        'battery_service',
+                        'device_information',
+                        '0000180f-0000-1000-8000-00805f9b34fb',
+                        '0000180a-0000-1000-8000-00805f9b34fb'
+                    ]
+                };
+
+                // إذا كان الحقل فارغاً، نسمح برؤية كل الأجهزة المتاحة
+                if (!userPrefix) {
+                    delete options.filters;
+                    options.acceptAllDevices = true;
+                }
+
+                const device = await navigator.bluetooth.requestDevice(options);
+
+                statusDiv.innerText = `جاري الاتصال بـ: ${device.name || 'الساعة'}...`;
+                const server = await device.gatt.connect();
+                statusDiv.innerText = `تم الاتصال بنجاح بـ: ${device.name || 'الساعة'} 🟢`;
+
             } catch (e) {
-                statusDiv.innerText = `خطأ BLE: ${e.message}`;
+                console.error(e);
+                statusDiv.innerText = `خطأ أو تم إلغاء الاتصال: ${e.message}`;
             }
         }
     </script>
