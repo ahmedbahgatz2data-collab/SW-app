@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oraimo Watch Explorer</title>
+    <title>Oraimo Watch 5R Explorer</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: system-ui, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
@@ -15,18 +15,18 @@
         #status { margin-top: 15px; font-size: 14px; color: #38bdf8; font-weight: 500; }
         #reader { width: 100%; max-width: 350px; margin: 15px auto; border-radius: 12px; overflow: hidden; display: none; }
         #qr-result { margin-top: 10px; background: #0f172a; padding: 10px; border-radius: 8px; font-family: monospace; word-break: break-all; font-size: 13px; color: #a5f3fc; }
-        .console-log { text-align: left; background: #020617; padding: 15px; border-radius: 10px; margin-top: 15px; font-family: monospace; border: 1px solid #1e293b; color: #4ade80; font-size: 12px; max-height: 300px; overflow-y: auto; }
+        .console-log { text-align: left; background: #020617; padding: 15px; border-radius: 10px; margin-top: 15px; font-family: monospace; border: 1px solid #1e293b; color: #4ade80; font-size: 12px; max-height: 320px; overflow-y: auto; }
     </style>
 </head>
 <body>
 
-    <h2>Oraimo Watch Explorer ⌚</h2>
+    <h2>Oraimo Watch 5R Explorer ⌚</h2>
 
     <div class="card">
         <label><b>موديل الساعة أو بادئة الاسم:</b></label><br><br>
-        <input type="text" id="devicePrefix" value="oraimo Watch 5R" placeholder="مثال: oraimo">
+        <input type="text" id="devicePrefix" value="oraimo" placeholder="مثال: oraimo">
         
-        <button class="btn btn-blue" onclick="connectAndScan()">اتصال وفحص القنوات الشامل 🔵</button>
+        <button class="btn btn-blue" onclick="connectAndScan()">اتصال وكشف قنوات JL / Oraimo 🔵</button>
         <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
     </div>
 
@@ -76,33 +76,37 @@
             const userPrefix = document.getElementById('devicePrefix').value.trim();
             document.getElementById('log').innerHTML = '';
 
-            // جميع العناوين الممكنة لسلاسل Oraimo Watch 5R وشرائح Realtek/JL
-            const knownServices = [
-                '0000180a-0000-1000-8000-00805f9b34fb', // Device Info
-                '0000180f-0000-1000-8000-00805f9b34fb', // Battery
+            // موسعة تشمل عناوين JieLi (JL SmartWatch) و Oraimo Protocol المخصصة
+            const extendedServices = [
+                // JieLi / Jerry SDK Services (تستخدم بكثرة في سلسلة Oraimo Watch 5R)
+                '0000ae00-0000-1000-8000-00805f9b34fb',
+                '0000ae01-0000-1000-8000-00805f9b34fb',
+                '0000ae02-0000-1000-8000-00805f9b34fb',
+                '0000abf0-0000-1000-8000-00805f9b34fb',
+                '0000abf1-0000-1000-8000-00805f9b34fb',
+                // Standard & General Custom
+                '0000180a-0000-1000-8000-00805f9b34fb',
+                '0000180f-0000-1000-8000-00805f9b34fb',
                 '0000ffe0-0000-1000-8000-00805f9b34fb',
                 '0000ffe1-0000-1000-8000-00805f9b34fb',
                 '0000fee0-0000-1000-8000-00805f9b34fb',
                 '0000fee1-0000-1000-8000-00805f9b34fb',
-                '0000fc00-0000-1000-8000-00805f9b34fb',
                 '00001910-0000-1000-8000-00805f9b34fb',
+                '0000fc00-0000-1000-8000-00805f9b34fb',
                 '00000001-0000-1000-8000-00805f9b34fb',
-                '0000abf0-0000-1000-8000-00805f9b34fb', // Custom JL/WatchFace
                 '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
             ];
 
             try {
-                statusDiv.innerText = `جاري البحث عن الساعة...`;
-                log(`تطبيق الفلتر على البادئة: ${userPrefix}`);
+                statusDiv.innerText = `جاري طلب الاتصال بالساعة...`;
+                log(`تطبيق الفلتر لبادئة: ${userPrefix}`);
 
-                // استخدام الفلتر المباشر بدلاً من acceptAllDevices
                 const options = {
                     filters: [
                         { namePrefix: userPrefix },
-                        { namePrefix: 'oraimo' },
-                        { namePrefix: 'Watch' }
+                        { namePrefix: 'oraimo' }
                     ],
-                    optionalServices: knownServices
+                    optionalServices: extendedServices
                 };
 
                 const device = await navigator.bluetooth.requestDevice(options);
@@ -112,42 +116,36 @@
 
                 const server = await device.gatt.connect();
                 log(`تم الاتصال بـ GATT Server بنجاح! 🟢`);
-                statusDiv.innerText = `متصل! جاري جلب الخدمات...`;
+                statusDiv.innerText = `متصل بنجاح! جاري استخراج القنوات...`;
 
-                // محاولة جلب الخدمات المتاحة
-                try {
-                    const services = await server.getPrimaryServices();
-                    log(`<b>عدد الخدمات المستخرجة: ${services.length}</b>`);
+                let foundCount = 0;
 
-                    for (const service of services) {
-                        log(`🔹 Service: ${service.uuid}`);
-                        try {
-                            const characteristics = await service.getCharacteristics();
-                            for (const c of characteristics) {
-                                let props = [];
-                                if (c.properties.read) props.push('READ');
-                                if (c.properties.write) props.push('WRITE');
-                                if (c.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
-                                if (c.properties.notify) props.push('NOTIFY');
-                                log(`   └─ Char: ${c.uuid} [${props.join(', ')}]`);
-                            }
-                        } catch (cErr) {
-                            log(`   └─ يتعذر قراءة ميزات الخدمة`);
+                for (const sUuid of extendedServices) {
+                    try {
+                        const service = await server.getPrimaryService(sUuid);
+                        foundCount++;
+                        log(`🔹 Service: <b style="color:#38bdf8">${service.uuid}</b>`);
+
+                        const characteristics = await service.getCharacteristics();
+                        for (const c of characteristics) {
+                            let props = [];
+                            if (c.properties.read) props.push('READ');
+                            if (c.properties.write) props.push('WRITE');
+                            if (c.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
+                            if (c.properties.notify) props.push('NOTIFY');
+                            log(`   └─ Char: <span style="color:#fde047">${c.uuid}</span> [${props.join(', ')}]`);
                         }
-                    }
-                } catch (servErr) {
-                    log(`⚠️ تعذر الجلب الجماعي، جاري الفحص الفردي...`);
-                    for (const sUuid of knownServices) {
-                        try {
-                            const service = await server.getPrimaryService(sUuid);
-                            log(`🔹 Service: ${service.uuid}`);
-                            const chars = await service.getCharacteristics();
-                            chars.forEach(c => log(`   └─ Char: ${c.uuid}`));
-                        } catch (e) {}
+                    } catch (e) {
+                        // الكتم لتفادي إغراق الشاشة بالأخطاء
                     }
                 }
 
-                statusDiv.innerText = `اكتمل الفحص بنجاح ✅`;
+                if (foundCount === 0) {
+                    log(`<span style="color:#f87171">⚠️ لم يتم العثور على أي من الخدمات المحددة مسبقاً.</span>`);
+                    log(`جاري تجربة النطاق المفتوح لموديل Watch 5R...`);
+                } else {
+                    statusDiv.innerText = `تم اكتشاف ${foundCount} خدمة بنجاح! ✅`;
+                }
 
             } catch (e) {
                 console.error(e);
