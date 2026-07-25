@@ -3,33 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تطبيق الساعة الذكية - Oraimo</title>
+    <title>تطبيق ساعة Oraimo - التحكم والبطارية</title>
     <!-- استدعاء مكتبة QR Code Scanner -->
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: system-ui, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
-        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; max-width: 400px; margin-left: auto; margin-right: auto; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 15px; border: 1px solid #334155; max-width: 450px; margin-left: auto; margin-right: auto; }
         input { width: 80%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: white; text-align: center; font-size: 16px; }
         .btn { padding: 12px 20px; font-size: 15px; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px; width: 90%; }
         .btn-blue { background: #3b82f6; }
         .btn-blue:hover { background: #2563eb; }
         .btn-green { background: #10b981; }
         .btn-green:hover { background: #059669; }
+        .btn-purple { background: #8b5cf6; }
+        .btn-purple:hover { background: #7c3aed; }
         #status { margin-top: 15px; font-size: 14px; color: #38bdf8; font-weight: 500; }
         #reader { width: 100%; max-width: 350px; margin: 15px auto; border-radius: 12px; overflow: hidden; display: none; }
         #qr-result { margin-top: 10px; background: #0f172a; padding: 10px; border-radius: 8px; font-family: monospace; word-break: break-all; font-size: 13px; color: #a5f3fc; }
+        .service-card { text-align: left; background: #1e293b; padding: 15px; border-radius: 10px; margin-top: 15px; font-family: monospace; border: 1px solid #334155; max-width: 450px; margin-left: auto; margin-right: auto; }
+        .char-item { margin-left: 10px; color: #a5f3fc; font-size: 12px; margin-top: 5px; word-break: break-all; }
+        .prop-badge { background: #0284c7; color: white; padding: 2px 6px; border-radius: 4px; font-size: 9px; margin-left: 2px; }
     </style>
 </head>
 <body>
 
-    <h2>مستكشف ساعة Oraimo ⌚</h2>
+    <h2>مستكشف وربط ساعة Oraimo ⌚</h2>
 
     <div class="card">
         <label><b>موديل الساعة أو بادئة الاسم:</b></label><br><br>
-        <input type="text" id="devicePrefix" value="OSW-830" placeholder="مثال: OSW-830">
+        <input type="text" id="devicePrefix" value="oraimo" placeholder="مثال: oraimo أو OSW-830">
         
         <button class="btn btn-blue" onclick="scanBLE()">البحث والاتصال بالساعة 🔵</button>
         <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
+        <button class="btn btn-purple" id="batteryBtn" onclick="getBatteryLevel()" style="display:none;">قراءة نسبة البطارية 🔋</button>
     </div>
 
     <!-- منطقة الكاميرا لقراءة الـ QR -->
@@ -37,9 +43,11 @@
     <div id="qr-result">نتيجة مسح الـ QR ستظهر هنا...</div>
 
     <div id="status">الحالة: جاهز للاتصال</div>
+    <div id="results"></div>
 
     <script>
         let html5QrcodeScanner = null;
+        let bluetoothServer = null;
 
         // 1. تشغيل / إيقاف قارئ الـ QR Code
         function toggleQRScanner() {
@@ -62,7 +70,6 @@
                     (decodedText, decodedResult) => {
                         resultDiv.innerHTML = `<b>تم القراءة:</b><br>${decodedText}`;
                         
-                        // محاولة استخراج اسم الموديل تلقائياً من رابط الـ QR (مثل OSW-830)
                         const match = decodedText.match(/(OSW-[A-Za-z0-9]+|oraimo)/i);
                         if (match) {
                             document.getElementById('devicePrefix').value = match[0];
@@ -79,15 +86,16 @@
             }
         }
 
-        // 2. كود البحث والاتصال بالبلوتوث مع فلترة الموديل المدخل
+        // 2. البحث والاتصال بالبلوتوث واستكشاف الخدمات
         async function scanBLE() {
             const statusDiv = document.getElementById('status');
+            const resultsDiv = document.getElementById('results');
             const userPrefix = document.getElementById('devicePrefix').value.trim();
+            resultsDiv.innerHTML = '';
 
             try {
                 statusDiv.innerText = `جاري البحث عن أجهزة تحتوي على: (${userPrefix})...`;
 
-                // إعداد شروط الفلترة بناءً على ما كتبه المستخدم أو ظهر من الـ QR
                 const options = {
                     filters: [
                         { namePrefix: userPrefix },
@@ -101,7 +109,6 @@
                     ]
                 };
 
-                // إذا كان الحقل فارغاً، نسمح برؤية كل الأجهزة المتاحة
                 if (!userPrefix) {
                     delete options.filters;
                     options.acceptAllDevices = true;
@@ -110,12 +117,69 @@
                 const device = await navigator.bluetooth.requestDevice(options);
 
                 statusDiv.innerText = `جاري الاتصال بـ: ${device.name || 'الساعة'}...`;
-                const server = await device.gatt.connect();
+                bluetoothServer = await device.gatt.connect();
                 statusDiv.innerText = `تم الاتصال بنجاح بـ: ${device.name || 'الساعة'} 🟢`;
+
+                // إظهار زر البطارية بعد نجاح الاتصال
+                document.getElementById('batteryBtn').style.display = 'inline-block';
+
+                // استكشاف الخدمات والقنوات تلقائياً
+                statusDiv.innerText += ' | جاري تحليل القنوات...';
+                const services = await bluetoothServer.getPrimaryServices();
+                let output = '<h3>الخدمات والقنوات المكتشفة:</h3>';
+
+                for (const service of services) {
+                    output += `<div class="service-card"><b>🔹 Service:</b> ${service.uuid}<br>`;
+                    try {
+                        const characteristics = await service.getCharacteristics();
+                        for (const char of characteristics) {
+                            let props = [];
+                            if (char.properties.read) props.push('READ');
+                            if (char.properties.write) props.push('WRITE');
+                            if (char.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
+                            if (char.properties.notify) props.push('NOTIFY');
+
+                            const propsText = props.map(p => `<span class="prop-badge">${p}</span>`).join(' ');
+                            output += `<div class="char-item">└─ Char: ${char.uuid} ${propsText}</div>`;
+                        }
+                    } catch (e) {
+                        output += `<div class="char-item" style="color:#f87171;">└─ متعذر قراءة الميزات</div>`;
+                    }
+                    output += `</div>`;
+                }
+
+                resultsDiv.innerHTML = output;
+                statusDiv.innerText = `متصل وجاهز - تم تحليل جميع القنوات بنجاح ✅`;
 
             } catch (e) {
                 console.error(e);
                 statusDiv.innerText = `خطأ أو تم إلغاء الاتصال: ${e.message}`;
+            }
+        }
+
+        // 3. قراءة مستوى البطارية من الساعة
+        async function getBatteryLevel() {
+            const statusDiv = document.getElementById('status');
+            if (!bluetoothServer) {
+                statusDiv.innerText = 'الرجاء الاتصال بالساعة أولاً!';
+                return;
+            }
+
+            try {
+                statusDiv.innerText = 'جاري قراءة مستوى البطارية...';
+                
+                // خدمة البطارية القياسية UUID
+                const batteryService = await bluetoothServer.getPrimaryService('battery_service');
+                const batteryCharacteristic = await batteryService.getCharacteristic('battery_level');
+                const value = await batteryCharacteristic.readValue();
+                
+                // القيمة عبارة عن بايت واحد يمثل النسبة المئوية (0 إلى 100)
+                const batteryPercentage = value.getUint8(0);
+                
+                statusDiv.innerText = `🔋 مستوى بطارية الساعة الآن: ${batteryPercentage}%`;
+            } catch (error) {
+                console.error(error);
+                statusDiv.innerText = `خطأ في قراءة البطارية (قد تكون الخدمة مخصصة): ${error.message}`;
             }
         }
     </script>
