@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تطبيق ساعة Oraimo - الإصدار المحسن</title>
-    <!-- استدعاء مكتبة QR Code Scanner -->
+    <title>تطبيق ساعة Oraimo - مستكشف القنوات</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: system-ui, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
@@ -12,33 +11,27 @@
         input { width: 80%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: white; text-align: center; font-size: 16px; }
         .btn { padding: 12px 20px; font-size: 15px; border: none; color: white; border-radius: 8px; cursor: pointer; font-weight: bold; margin: 5px; width: 90%; }
         .btn-blue { background: #3b82f6; }
-        .btn-blue:hover { background: #2563eb; }
         .btn-green { background: #10b981; }
-        .btn-green:hover { background: #059669; }
-        .btn-purple { background: #8b5cf6; }
-        .btn-purple:hover { background: #7c3aed; }
         #status { margin-top: 15px; font-size: 14px; color: #38bdf8; font-weight: 500; }
         #reader { width: 100%; max-width: 350px; margin: 15px auto; border-radius: 12px; overflow: hidden; display: none; }
         #qr-result { margin-top: 10px; background: #0f172a; padding: 10px; border-radius: 8px; font-family: monospace; word-break: break-all; font-size: 13px; color: #a5f3fc; }
         .service-card { text-align: left; background: #1e293b; padding: 15px; border-radius: 10px; margin-top: 15px; font-family: monospace; border: 1px solid #334155; max-width: 450px; margin-left: auto; margin-right: auto; }
-        .char-item { margin-left: 10px; color: #a5f3fc; font-size: 12px; margin-top: 5px; word-break: break-all; }
-        .prop-badge { background: #0284c7; color: white; padding: 2px 6px; border-radius: 4px; font-size: 9px; margin-left: 2px; }
+        .char-item { margin-left: 10px; color: #a5f3fc; font-size: 11px; margin-top: 5px; word-break: break-all; }
+        .prop-badge { background: #0284c7; color: white; padding: 2px 5px; border-radius: 4px; font-size: 9px; margin-left: 2px; }
     </style>
 </head>
 <body>
 
-    <h2>مستكشف وربط ساعة Oraimo ⌚</h2>
+    <h2>مستكشف ساعة Oraimo ⌚</h2>
 
     <div class="card">
         <label><b>موديل الساعة أو بادئة الاسم:</b></label><br><br>
-        <input type="text" id="devicePrefix" value="oraimo" placeholder="مثال: oraimo أو OSW-830">
+        <input type="text" id="devicePrefix" value="oraimo" placeholder="مثال: oraimo">
         
-        <button class="btn btn-blue" onclick="scanBLE()">البحث والاتصال بالساعة 🔵</button>
+        <button class="btn btn-blue" onclick="scanBLE()">البحث والكشف الشامل عن القنوات 🔵</button>
         <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
-        <button class="btn btn-purple" id="batteryBtn" onclick="getBatteryLevel()" style="display:none;">قراءة نسبة البطارية 🔋</button>
     </div>
 
-    <!-- منطقة الكاميرا لقراءة الـ QR -->
     <div id="reader"></div>
     <div id="qr-result">نتيجة مسح الـ QR ستظهر هنا...</div>
 
@@ -47,7 +40,6 @@
 
     <script>
         let html5QrcodeScanner = null;
-        let bluetoothServer = null;
 
         function toggleQRScanner() {
             const readerDiv = document.getElementById('reader');
@@ -55,9 +47,7 @@
 
             if (readerDiv.style.display === 'block') {
                 if (html5QrcodeScanner) {
-                    html5QrcodeScanner.stop().then(() => {
-                        readerDiv.style.display = 'none';
-                    });
+                    html5QrcodeScanner.stop().then(() => { readerDiv.style.display = 'none'; });
                 }
             } else {
                 readerDiv.style.display = 'block';
@@ -66,22 +56,14 @@
                 html5QrcodeScanner.start(
                     { facingMode: "environment" },
                     { fps: 10, qrbox: { width: 250, height: 250 } },
-                    (decodedText, decodedResult) => {
+                    (decodedText) => {
                         resultDiv.innerHTML = `<b>تم القراءة:</b><br>${decodedText}`;
-                        
                         const match = decodedText.match(/(OSW-[A-Za-z0-9]+|oraimo)/i);
-                        if (match) {
-                            document.getElementById('devicePrefix').value = match[0];
-                        }
-
-                        html5QrcodeScanner.stop().then(() => {
-                            readerDiv.style.display = 'none';
-                        });
+                        if (match) { document.getElementById('devicePrefix').value = match[0]; }
+                        html5QrcodeScanner.stop().then(() => { readerDiv.style.display = 'none'; });
                     },
-                    (errorMessage) => {}
-                ).catch(err => {
-                    resultDiv.innerText = "خطأ في فتح الكاميرا: " + err;
-                });
+                    (err) => {}
+                ).catch(err => { resultDiv.innerText = "خطأ الكاميرا: " + err; });
             }
         }
 
@@ -94,16 +76,20 @@
             try {
                 statusDiv.innerText = `جاري البحث عن أجهزة تحتوي على: (${userPrefix})...`;
 
-                // قائمة بالخدمات الأكثر انتشاراً في أجهزة الساعات الذكية
-                const commonServices = [
-                    'battery_service',
-                    'device_information',
-                    '0000180f-0000-1000-8000-00805f9b34fb',
-                    '0000180a-0000-1000-8000-00805f9b34fb',
-                    '0000ffe0-0000-1000-8000-00805f9b34fb',
+                // قائمة موسعة جداً بأشهر Custom UUIDs المستخدمة في ساعات Oraimo وسلاسل Realtek / JL / Nordic
+                const customServices = [
+                    '00001800-0000-1000-8000-00805f9b34fb', // Generic Access
+                    '00001801-0000-1000-8000-00805f9b34fb', // Generic Attribute
+                    '0000180a-0000-1000-8000-00805f9b34fb', // Device Info
+                    '0000180f-0000-1000-8000-00805f9b34fb', // Battery
+                    '0000ffe0-0000-1000-8000-00805f9b34fb', // Common Custom 1
+                    '0000ffe1-0000-1000-8000-00805f9b34fb',
+                    '0000fee0-0000-1000-8000-00805f9b34fb', // Custom 2
                     '0000fee7-0000-1000-8000-00805f9b34fb',
-                    '0000fee0-0000-1000-8000-00805f9b34fb',
-                    '00001801-0000-1000-8000-00805f9b34fb'
+                    '0000fc00-0000-1000-8000-00805f9b34fb',
+                    '00001910-0000-1000-8000-00805f9b34fb', // Realtek OTA/Data
+                    '00000001-0000-1000-8000-00805f9b34fb',
+                    '6e400001-b5a3-f393-e0a9-e50e24dcca9e'  // Nordic UART
                 ];
 
                 const options = {
@@ -111,7 +97,7 @@
                         { namePrefix: userPrefix },
                         { namePrefix: 'oraimo' }
                     ],
-                    optionalServices: commonServices
+                    optionalServices: customServices
                 };
 
                 if (!userPrefix) {
@@ -122,72 +108,38 @@
                 const device = await navigator.bluetooth.requestDevice(options);
 
                 statusDiv.innerText = `جاري الاتصال بـ: ${device.name || 'الساعة'}...`;
-                bluetoothServer = await device.gatt.connect();
-                statusDiv.innerText = `تم الاتصال بنجاح بـ: ${device.name || 'الساعة'} 🟢`;
+                const server = await device.gatt.connect();
+                statusDiv.innerText = `تم الاتصال! جاري استخراج قنوات الاتصال...`;
 
-                document.getElementById('batteryBtn').style.display = 'inline-block';
+                const services = await server.getPrimaryServices();
+                let output = '<h3>القنوات والخدمات المكتشفة:</h3>';
 
-                statusDiv.innerText += ' | جاري تحليل القنوات المتاحة...';
-                
-                try {
-                    const services = await bluetoothServer.getPrimaryServices();
-                    let output = '<h3>الخدمات والقنوات المكتشفة:</h3>';
+                for (const service of services) {
+                    output += `<div class="service-card"><b>🔹 Service:</b> ${service.uuid}<br>`;
+                    try {
+                        const characteristics = await service.getCharacteristics();
+                        for (const char of characteristics) {
+                            let props = [];
+                            if (char.properties.read) props.push('READ');
+                            if (char.properties.write) props.push('WRITE');
+                            if (char.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
+                            if (char.properties.notify) props.push('NOTIFY');
 
-                    if (services.length === 0) {
-                        output += '<p style="color:#f87171;">لم يتم العثور على خدمات قياسية معرفة في قائمة optionalServices.</p>';
-                    }
-
-                    for (const service of services) {
-                        output += `<div class="service-card"><b>🔹 Service:</b> ${service.uuid}<br>`;
-                        try {
-                            const characteristics = await service.getCharacteristics();
-                            for (const char of characteristics) {
-                                let props = [];
-                                if (char.properties.read) props.push('READ');
-                                if (char.properties.write) props.push('WRITE');
-                                if (char.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
-                                if (char.properties.notify) props.push('NOTIFY');
-
-                                const propsText = props.map(p => `<span class="prop-badge">${p}</span>`).join(' ');
-                                output += `<div class="char-item">└─ Char: ${char.uuid} ${propsText}</div>`;
-                            }
-                        } catch (e) {
-                            output += `<div class="char-item" style="color:#f87171;">└─ متعذر قراءة الميزات الفرعية</div>`;
+                            const propsText = props.map(p => `<span class="prop-badge">${p}</span>`).join(' ');
+                            output += `<div class="char-item">└─ Char: ${char.uuid} ${propsText}</div>`;
                         }
-                        output += `</div>`;
+                    } catch (e) {
+                        output += `<div class="char-item" style="color:#f87171;">└─ يتعذر القراءة المباشرة للميزة</div>`;
                     }
-                    resultsDiv.innerHTML = output;
-                } catch (servErr) {
-                    console.warn("تنبيه عند جلب الخدمات العامة:", servErr);
-                    resultsDiv.innerHTML = '<div class="service-card" style="color:#38bdf8;">الاتصال نشط 🟢 (الخدمات الخاصة تحتاج لطلب مباشر عبر UUID المحدد).</div>';
+                    output += `</div>`;
                 }
 
-                statusDiv.innerText = `متصل وجاهز ✅`;
+                resultsDiv.innerHTML = output;
+                statusDiv.innerText = `تم استخراج الخدمات بنجاح ✅`;
 
             } catch (e) {
                 console.error(e);
-                statusDiv.innerText = `خطأ أو تم إلغاء الاتصال: ${e.message}`;
-            }
-        }
-
-        async function getBatteryLevel() {
-            const statusDiv = document.getElementById('status');
-            if (!bluetoothServer) {
-                statusDiv.innerText = 'الرجاء الاتصال بالساعة أولاً!';
-                return;
-            }
-
-            try {
-                statusDiv.innerText = 'جاري قراءة مستوى البطارية...';
-                const batteryService = await bluetoothServer.getPrimaryService('battery_service');
-                const batteryCharacteristic = await batteryService.getCharacteristic('battery_level');
-                const value = await batteryCharacteristic.readValue();
-                const batteryPercentage = value.getUint8(0);
-                
-                statusDiv.innerText = `🔋 مستوى بطارية الساعة الآن: ${batteryPercentage}%`;
-            } catch (error) {
-                console.error(error);
-                statusDiv.innerText = `تنبيه: خدمة البطارية القياسية غير مفعّلة بشكل مباشر على هذه الساعة.`;
+                statusDiv.innerText = `خطأ: ${e.message}`;
             }
         }
     </script>
