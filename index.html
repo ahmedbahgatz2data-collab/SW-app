@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Oraimo Watch - BLE Explorer</title>
+    <title>Oraimo Watch Explorer</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: system-ui, sans-serif; padding: 20px; background: #0f172a; color: #f8fafc; text-align: center; }
@@ -24,7 +24,7 @@
 
     <div class="card">
         <label><b>موديل الساعة أو بادئة الاسم:</b></label><br><br>
-        <input type="text" id="devicePrefix" value="oraimo" placeholder="مثال: oraimo">
+        <input type="text" id="devicePrefix" value="oraimo Watch 5R" placeholder="مثال: oraimo">
         
         <button class="btn btn-blue" onclick="connectAndScan()">اتصال وفحص القنوات الشامل 🔵</button>
         <button class="btn btn-green" onclick="toggleQRScanner()">مسح QR Code 📷</button>
@@ -76,59 +76,78 @@
             const userPrefix = document.getElementById('devicePrefix').value.trim();
             document.getElementById('log').innerHTML = '';
 
-            // القائمة الشاملة لجميع UUIDs المحتملة لساعات Oraimo وشرائح Realtek/JL/Nordic
+            // جميع العناوين الممكنة لسلاسل Oraimo Watch 5R وشرائح Realtek/JL
             const knownServices = [
                 '0000180a-0000-1000-8000-00805f9b34fb', // Device Info
-                '0000180f-0000-1000-8000-00805f9b34fb', // Battery Level
-                '0000ffe0-0000-1000-8000-00805f9b34fb', // Custom Serial / WatchFace
+                '0000180f-0000-1000-8000-00805f9b34fb', // Battery
+                '0000ffe0-0000-1000-8000-00805f9b34fb',
                 '0000ffe1-0000-1000-8000-00805f9b34fb',
-                '0000fee0-0000-1000-8000-00805f9b34fb', // Health Data
+                '0000fee0-0000-1000-8000-00805f9b34fb',
                 '0000fee1-0000-1000-8000-00805f9b34fb',
                 '0000fc00-0000-1000-8000-00805f9b34fb',
-                '00001910-0000-1000-8000-00805f9b34fb', // OTA / Protocol
+                '00001910-0000-1000-8000-00805f9b34fb',
                 '00000001-0000-1000-8000-00805f9b34fb',
-                '6e400001-b5a3-f393-e0a9-e50e24dcca9e'  // Nordic UART
+                '0000abf0-0000-1000-8000-00805f9b34fb', // Custom JL/WatchFace
+                '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
             ];
 
             try {
-                statusDiv.innerText = `جاري طلب الاتصال بالساعة...`;
-                log(`البحث عن أجهزة بـ: ${userPrefix || 'الجميع'}`);
+                statusDiv.innerText = `جاري البحث عن الساعة...`;
+                log(`تطبيق الفلتر على البادئة: ${userPrefix}`);
 
+                // استخدام الفلتر المباشر بدلاً من acceptAllDevices
                 const options = {
-                    acceptAllDevices: true,
+                    filters: [
+                        { namePrefix: userPrefix },
+                        { namePrefix: 'oraimo' },
+                        { namePrefix: 'Watch' }
+                    ],
                     optionalServices: knownServices
                 };
 
                 const device = await navigator.bluetooth.requestDevice(options);
 
-                log(`تم اختيار الجهاز: ${device.name || 'بدون اسم'}`);
-                statusDiv.innerText = `جاري الاتصال...`;
+                log(`تم اختيار الجهاز: ${device.name}`);
+                statusDiv.innerText = `جاري الاتصال بالساعة...`;
 
                 const server = await device.gatt.connect();
                 log(`تم الاتصال بـ GATT Server بنجاح! 🟢`);
-                statusDiv.innerText = `متصل بنجاح 🟢`;
+                statusDiv.innerText = `متصل! جاري جلب الخدمات...`;
 
-                // الفحص المباشر للخدمات غير المحظورة
-                for (const serviceUuid of knownServices) {
-                    try {
-                        const service = await server.getPrimaryService(serviceUuid);
-                        log(`✅ تم العثور على الخدمة: <b>${serviceUuid}</b>`);
+                // محاولة جلب الخدمات المتاحة
+                try {
+                    const services = await server.getPrimaryServices();
+                    log(`<b>عدد الخدمات المستخرجة: ${services.length}</b>`);
 
-                        const characteristics = await service.getCharacteristics();
-                        for (const c of characteristics) {
-                            let props = [];
-                            if (c.properties.read) props.push('READ');
-                            if (c.properties.write) props.push('WRITE');
-                            if (c.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
-                            if (c.properties.notify) props.push('NOTIFY');
-                            log(`  └─ Char: ${c.uuid} [${props.join(', ')}]`);
+                    for (const service of services) {
+                        log(`🔹 Service: ${service.uuid}`);
+                        try {
+                            const characteristics = await service.getCharacteristics();
+                            for (const c of characteristics) {
+                                let props = [];
+                                if (c.properties.read) props.push('READ');
+                                if (c.properties.write) props.push('WRITE');
+                                if (c.properties.writeWithoutResponse) props.push('WRITE_NO_RESP');
+                                if (c.properties.notify) props.push('NOTIFY');
+                                log(`   └─ Char: ${c.uuid} [${props.join(', ')}]`);
+                            }
+                        } catch (cErr) {
+                            log(`   └─ يتعذر قراءة ميزات الخدمة`);
                         }
-                    } catch (sErr) {
-                        // خفية - الخدمات غير الموجودة تتخطاها بدون إخراج خطأ مزعج
+                    }
+                } catch (servErr) {
+                    log(`⚠️ تعذر الجلب الجماعي، جاري الفحص الفردي...`);
+                    for (const sUuid of knownServices) {
+                        try {
+                            const service = await server.getPrimaryService(sUuid);
+                            log(`🔹 Service: ${service.uuid}`);
+                            const chars = await service.getCharacteristics();
+                            chars.forEach(c => log(`   └─ Char: ${c.uuid}`));
+                        } catch (e) {}
                     }
                 }
 
-                statusDiv.innerText = `اكتمل الفحص المستهدف ✅`;
+                statusDiv.innerText = `اكتمل الفحص بنجاح ✅`;
 
             } catch (e) {
                 console.error(e);
